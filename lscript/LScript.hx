@@ -5,6 +5,7 @@ import lscript.*;
 import llua.Lua;
 import llua.LuaL;
 import llua.State;
+import llua.LuaOpen;
 
 import cpp.Callable;
 
@@ -23,6 +24,7 @@ class LScript {
 	public var tracePrefix:String = "testScript: ";
 	public var parent(get, set):Dynamic;
 	public var script(get, null):Dynamic;
+	public var unsafe(default, null):Bool;
 	var toParse:String;
 
 	/**
@@ -32,9 +34,18 @@ class LScript {
 	public var avalibableIndexes:Array<Int> = [];
 	public var nextIndex:Int = 1;
 	
-	public function new(scriptCode:String) {
+	public function new(scriptCode:String, ?unsafe:Bool = false) {
 		luaState = LuaL.newstate();
-		LuaL.openlibs(luaState);
+		if(unsafe)
+			LuaL.openlibs(luaState);
+		else {
+			LuaOpen.base(luaState);
+			LuaOpen.math(luaState);
+			LuaOpen.string(luaState);
+			LuaOpen.table(luaState);
+		}
+		this.unsafe = unsafe;
+
 		Lua.register_hxtrace_func(Callable.fromStaticFunction(scriptTrace));
 		Lua.register_hxtrace_lib(luaState);
 

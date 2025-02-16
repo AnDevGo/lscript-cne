@@ -45,8 +45,8 @@ class LScript {
 			LuaOpen.table(luaState);
 		}
 		this.unsafe = unsafe;
-
-		Lua.register_hxtrace_func(Callable.fromStaticFunction(scriptTrace));
+		
+		Lua.register_hxtrace_func(Callable.fromStaticFunction(_scriptTrace));
 		Lua.register_hxtrace_lib(luaState);
 
 		Lua.newtable(luaState);
@@ -84,7 +84,7 @@ class LScript {
 		Lua.pushcfunction(luaState, MetatableFunctions.callEnumIndex);
 		Lua.settable(luaState, enumMetatableIndex);
 
-		specialVars[0] = {"import": ClassWorkarounds.importClass}
+		specialVars[0] = {"import": (unsafe) ? ClassWorkarounds.importClass : ClassWorkarounds.importClassSafe};
 
 		Lua.newtable(luaState);
 		final scriptTableIndex = Lua.gettop(luaState);
@@ -98,7 +98,7 @@ class LScript {
 		LuaL.getmetatable(luaState, "__scriptMetatable");
 		Lua.setmetatable(luaState, scriptTableIndex);
 
-		//Adding a suffix to the end of the lua file to attach a metatable to the global vars. (So you cant have to do `script.parent.this`)
+		//Adding a suffix to the end of the lua file to attach a metatable to the global vars. (So you don't have to do `script.parent.this`)
 		toParse = scriptCode + '\nsetmetatable(_G, {
 			__newindex = function (notUsed, name, value)
 				__scriptMetatable.__newindex(script.parent, name, value)
@@ -123,8 +123,16 @@ class LScript {
 		trace("Lua code was unable to be parsed.\n" + err);
 	}
 
-	static inline function scriptTrace(s:String):Int {
-		Sys.println(currentLua.tracePrefix + CustomConvert.fromLua(-2));
+	public dynamic function functionError(func:String, err:String) {
+		Sys.println(tracePrefix + 'Function("$func") Error: ${Lua.tostring(luaState, -1)}');
+	}
+
+	public dynamic function scriptTrace(s:Dynamic) {
+		Sys.println(tracePrefix + Std.string(s));
+	}
+
+	static inline function _scriptTrace(s:String):Int {
+		currentLua.scriptTrace(CustomConvert.fromLua(-2));
 		return 0;
 	}
 
@@ -173,7 +181,7 @@ class LScript {
 		
 		//Calls the function of the script. If it does not return 0, will trace what went wrong.
 		if (Lua.pcall(luaState, nparams, 1, 0) != 0) {
-			Sys.println(tracePrefix + 'Function("$name") Error: ${Lua.tostring(luaState, -1)}');
+			functionError(name, Lua.tostring(luaState, -1));
 			return null;
 		}
 

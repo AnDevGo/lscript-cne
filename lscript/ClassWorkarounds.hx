@@ -1,5 +1,6 @@
 package lscript;
 
+import funkin.backend.Logs;
 import lscript.LScript;
 import lscript.CustomConvert;
 
@@ -23,7 +24,6 @@ class ClassWorkarounds {
 		final funcParams = [for (i in 1...params.length) params[i]];
 		params.splice(1, params.length);
 		params.push(funcParams);
-		Sys.println(params);
 
 		//Calling the function.
 		var returned:Dynamic = null;
@@ -72,5 +72,14 @@ class ClassWorkarounds {
 		} else {
 			Sys.println('${LScript.currentLua.tracePrefix}Lua Import Error: Unable to find class from path "$path".');
 		}
+	}
+
+	/**
+	 * The function utilized for adding classes to lua.
+	 * @param path                  The path to the class.
+	 * @param varName               [OPTIONAL] The name to set the class to.
+	 */
+	public static function importClassSafe(path:String, ?varName:String) {
+		Logs.error('Could not import class "${path}" because this script is marked as safe.');	
 	}
 }

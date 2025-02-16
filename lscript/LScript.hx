@@ -46,7 +46,7 @@ class LScript {
 		}
 		this.unsafe = unsafe;
 		
-		Lua.register_hxtrace_func(Callable.fromStaticFunction(_scriptTrace));
+		Lua.register_hxtrace_func(Callable.fromStaticFunction(scriptTrace));
 		Lua.register_hxtrace_lib(luaState);
 
 		Lua.newtable(luaState);
@@ -127,12 +127,21 @@ class LScript {
 		Sys.println(tracePrefix + 'Function("$func") Error: ${Lua.tostring(luaState, -1)}');
 	}
 
-	public dynamic function scriptTrace(s:Dynamic) {
-		Sys.println(tracePrefix + Std.string(s));
+	public dynamic function print(line:Int, s:String) {
+		Sys.println('${tracePrefix}:${line}: ' + s);
 	}
 
-	static inline function _scriptTrace(s:String):Int {
-		currentLua.scriptTrace(CustomConvert.fromLua(-2));
+	static inline function scriptTrace(s:String):Int {
+		var info:Lua_Debug = {};
+		Lua.getstack(currentLua.luaState, 1, info);
+		Lua.getinfo(currentLua.luaState, "l", info);
+
+		var toTrace = "";
+		final numParams = Lua.gettop(currentLua.luaState);
+		for (i in 0...(numParams - 1))
+			toTrace += Std.string(CustomConvert.fromLua(-numParams + i));
+
+		currentLua.print(info.currentline, toTrace);
 		return 0;
 	}
 

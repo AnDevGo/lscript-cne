@@ -1,9 +1,9 @@
 package lscript;
 
-import funkin.backend.Logs;
+import states.game.PlayState;
 import lscript.LScript;
 import lscript.CustomConvert;
-
+import flixel.util.FlxColor;
 import llua.Lua;
 import llua.LuaL;
 import llua.State;
@@ -80,6 +80,6 @@ class ClassWorkarounds {
 	 * @param varName               [OPTIONAL] The name to set the class to.
 	 */
 	public static function importClassSafe(path:String, ?varName:String) {
-		Logs.error('Could not import class "${path}" because this script is marked as safe.');	
+		PlayState.instance.addTextToDebug('Could not import class "${path}" because this script is marked as safe.', FlxColor.RED);	
 	}
 }

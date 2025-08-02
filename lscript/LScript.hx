@@ -8,6 +8,7 @@ import llua.State;
 import llua.LuaOpen;
 
 import cpp.Callable;
+import cpp.RawPointer;
 
 using StringTools;
 
@@ -16,9 +17,21 @@ using StringTools;
  * 
  * Base code written by YoshiCrafter29 (https://github.com/YoshiCrafter29)
  * Fixed and tweaked by Srt (https://github.com/SrtHero278)
+ * 
+ * Features:
+ * - Global variables accessible via the 'global' table in Lua
+ * - Direct Haxe access to variables via getVar/setVar
+ * 
+ * Example Lua usage:
+ * ```lua
+ * global.myVar = "test"  -- Set global variable
+ * print(global.myVar)    -- Access global variable
+ * ```
  */
 class LScript {
 	public static var currentLua:LScript = null;
+	
+	public static var GlobalVars:Map<String, Dynamic> = new Map<String, Dynamic>();
 
 	public var luaState:State;
 	public var tracePrefix:String = "testScript: ";
@@ -34,7 +47,7 @@ class LScript {
 	public var avalibableIndexes:Array<Int> = [];
 	public var nextIndex:Int = 1;
 	
-	public function new(scriptCode:String, ?unsafe:Bool = false) {
+	public function new(?unsafe:Bool = false) {
 		luaState = LuaL.newstate();
 		if(unsafe)
 			LuaL.openlibs(luaState);
@@ -78,7 +91,7 @@ class LScript {
 
 		LuaL.newmetatable(luaState, "__enumMetatable");
 		final enumMetatableIndex = Lua.gettop(luaState); //The variable position of the table. Used for setting the functions inside this metatable.
-		Lua.pushvalue(luaState, metatableIndex);
+		Lua.pushvalue(luaState, enumMetatableIndex);
 
 		Lua.pushstring(luaState, '__index'); //This is a function in the metatable that is called when you to get a var that doesn't exist.
 		Lua.pushcfunction(luaState, MetatableFunctions.callEnumIndex);
@@ -97,9 +110,17 @@ class LScript {
 
 		LuaL.getmetatable(luaState, "__scriptMetatable");
 		Lua.setmetatable(luaState, scriptTableIndex);
+		
+		// Create global table for sharing variables between scripts
+		createGlobalTable();
+	}
+
+	public function execute(code:String) {
+		final lastLua:LScript = currentLua;
+		currentLua = this;
 
 		//Adding a suffix to the end of the lua file to attach a metatable to the global vars. (So you don't have to do `script.parent.this`)
-		toParse = scriptCode + '\nsetmetatable(_G, {
+		toParse = preprocessCode(code) + '\nsetmetatable(_G, {
 			__newindex = function (notUsed, name, value)
 				__scriptMetatable.__newindex(script.parent, name, value)
 			end,
@@ -107,16 +128,28 @@ class LScript {
 				return __scriptMetatable.__index(script.parent, name)
 			end
 		})';
-	}
-
-	public function execute() {
-		final lastLua:LScript = currentLua;
-		currentLua = this;
 
 		if (LuaL.dostring(luaState, toParse) != 0)
 			parseError(Lua.tostring(luaState, -1));
 
 		currentLua = lastLua;
+	}
+
+	private function preprocessCode(code:String):String {
+
+		var processedCode = code;
+
+		processedCode = ~/\bglobal\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=/g.map(processedCode, function (e) {
+			var varName = e.matched(1);
+			return varName + " =";
+		});
+
+		processedCode = ~/\bglobal\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g.map(processedCode, function (e) {
+			var varName = e.matched(1);
+			return varName + " (";
+		});
+		
+		return processedCode;
 	}
 
 	public dynamic function parseError(err:String) {
@@ -210,5 +243,58 @@ class LScript {
 	}
 	inline function set_parent(newParent:Dynamic) {
 		return specialVars[0].parent = newParent;
+	}
+	
+	/**
+	 * Creates a global table that can be used to share variables between different lua scripts
+	 */
+	function createGlobalTable() {
+		// Create the global metatable for shared variables
+		LuaL.newmetatable(luaState, "__globalMetatable");
+		final globalMetatableIndex = Lua.gettop(luaState);
+		
+		// Set __index function for the global table
+		Lua.pushstring(luaState, "__index");
+		Lua.pushcfunction(luaState, Callable.fromStaticFunction(globalIndex));
+		Lua.settable(luaState, globalMetatableIndex);
+		
+		// Set __newindex function for the global table
+		Lua.pushstring(luaState, "__newindex");
+		Lua.pushcfunction(luaState, Callable.fromStaticFunction(globalNewIndex));
+		Lua.settable(luaState, globalMetatableIndex);
+		
+		// Create the global table
+		Lua.newtable(luaState);
+		final globalTableIndex = Lua.gettop(luaState);
+		
+		// Set metatable for the global table
+		LuaL.getmetatable(luaState, "__globalMetatable");
+		Lua.setmetatable(luaState, globalTableIndex);
+		
+		// Set the global table in the Lua state
+		Lua.setglobal(luaState, "global");
+	}
+	
+	/**
+	 * The C function for __index of the global table
+	 */
+	public static function globalIndex(state:StatePointer):Int {
+		final globalName = Lua.tostring(cast state, -1);
+		if (LScript.GlobalVars.exists(globalName)) {
+			CustomConvert.toLua(LScript.GlobalVars.get(globalName));
+			return 1;
+		}
+		Lua.pushnil(cast state);
+		return 1;
+	}
+	
+	/**
+	 * The C function for __newindex of the global table
+	 */
+	public static function globalNewIndex(state:StatePointer):Int {
+		final globalName = Lua.tostring(cast state, -2);
+		final value = CustomConvert.fromLua(-1);
+		LScript.GlobalVars.set(globalName, value);
+		return 0;
 	}
 }

@@ -1,9 +1,10 @@
 package lscript;
 
 import states.game.PlayState;
+
 import lscript.LScript;
 import lscript.CustomConvert;
-import flixel.util.FlxColor;
+
 import llua.Lua;
 import llua.LuaL;
 import llua.State;

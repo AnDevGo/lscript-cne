@@ -94,8 +94,9 @@ class MetatableFunctions {
 			return object[cast(property, Int)];
 
 		var grabbedProperty:Dynamic = null;
+		var propName:String = cast(property, String);
 
-		if (object != null && (grabbedProperty = Reflect.getProperty(object, cast(property, String))) != null)
+		if (object != null && (grabbedProperty = Reflect.getProperty(object, propName)) != null)
 			return grabbedProperty;
 		return null;
 	}
@@ -105,8 +106,10 @@ class MetatableFunctions {
 			return null;
 		}
 
+		var propName:String = cast(property, String);
+
 		if (object != null)
-			Reflect.setProperty(object, cast(property, String), value);
+			Reflect.setProperty(object, propName, value);
 		return null;
 	}
 	public static function metatableCall(func:Dynamic, object:Dynamic, ?params:Array<Any>) {

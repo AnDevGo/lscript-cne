@@ -1,7 +1,7 @@
 package lscript;
 
 import states.game.PlayState;
-
+import flixel.util.FlxColor;
 import lscript.LScript;
 import lscript.CustomConvert;
 

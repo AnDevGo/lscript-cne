@@ -47,7 +47,7 @@ class LScript {
 	public var avalibableIndexes:Array<Int> = [];
 	public var nextIndex:Int = 1;
 	
-	public function new(?unsafe:Bool = false) {
+	public function new(code:String, ?unsafe:Bool = false) {
 		luaState = LuaL.newstate();
 		if(unsafe)
 			LuaL.openlibs(luaState);
@@ -113,11 +113,6 @@ class LScript {
 		
 		// Create global table for sharing variables between scripts
 		createGlobalTable();
-	}
-
-	public function execute(code:String) {
-		final lastLua:LScript = currentLua;
-		currentLua = this;
 
 		//Adding a suffix to the end of the lua file to attach a metatable to the global vars. (So you don't have to do `script.parent.this`)
 		toParse = preprocessCode(code) + '\nsetmetatable(_G, {
@@ -128,6 +123,11 @@ class LScript {
 				return __scriptMetatable.__index(script.parent, name)
 			end
 		})';
+	}
+
+	public function execute() {
+		final lastLua:LScript = currentLua;
+		currentLua = this;
 
 		if (LuaL.dostring(luaState, toParse) != 0)
 			parseError(Lua.tostring(luaState, -1));

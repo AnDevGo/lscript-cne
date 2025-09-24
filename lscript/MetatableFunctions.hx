@@ -29,31 +29,37 @@ class MetatableFunctions {
 
 
     static function metatableFunc(state:State, funcNum:Int):Int {
-        final functions = [index, newIndex, metatableCall, garbageCollect, enumIndex];
-
+        var indexWrapper           = function(obj:Dynamic, key:Dynamic, _:Dynamic):Dynamic return index(obj, key);
+        var newIndexWrapper        = function(obj:Dynamic, key:Dynamic, val:Dynamic):Dynamic return newIndex(obj, key, val);
+        var callWrapper            = function(func:Dynamic, obj:Dynamic, args:Dynamic):Dynamic return metatableCall(func, obj, args);
+        var gcWrapper              = function(idx:Dynamic, _:Dynamic, __:Dynamic):Dynamic { garbageCollect(idx); return null; };
+        var enumWrapper            = function(e:Dynamic, name:Dynamic, args:Dynamic):Dynamic return enumIndex(e, name, args);
+    
+        final functions:Array<Dynamic->Dynamic->Dynamic->Dynamic> = [
+            indexWrapper, newIndexWrapper, callWrapper, gcWrapper, enumWrapper
+        ];
+    
         final nparams = Lua.gettop(state);
-        var specialIndex:Int = -1; 
+    
+        var specialIndex:Int = -1;   
         var parentIndex:Int  = -1;
-
+    
         final params = [
             for (i in 0...nparams)
-                CustomConvert.fromLua(
-                    -nparams + i,
-                    RawPointer.addressOf(specialIndex),
-                    RawPointer.addressOf(parentIndex),
-                    i == 0
-                )
+                CustomConvert.fromLua(-nparams + i,
+                                      RawPointer.addressOf(specialIndex),
+                                      RawPointer.addressOf(parentIndex),
+                                      i == 0)
         ];
-
+    
         if (funcNum == 2) {
             final objParent = (parentIndex >= 0) ? LScript.currentLua.specialVars[parentIndex] : null;
             if (params[1] != objParent) params.insert(1, objParent);
-
             final funcParams = [for (j in 2...params.length) params[j]];
             params.splice(2, params.length);
             params.push(funcParams);
         }
-
+    
         var returned:Dynamic = null;
         try {
             returned = functions[funcNum](params[0], params[1], params[2]);
@@ -62,7 +68,7 @@ class MetatableFunctions {
             Lua.settop(state, 0);
             return 0;
         }
-
+    
         Lua.settop(state, 0);
         if (returned != null) {
             CustomConvert.toLua(returned, funcNum < 2 ? specialIndex : -1);
@@ -147,3 +153,4 @@ class MetatableFunctions {
         return null;
     }
 }
+

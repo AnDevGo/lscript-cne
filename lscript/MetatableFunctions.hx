@@ -66,12 +66,11 @@ class MetatableFunctions {
 	static function metatableFunc(state:State, funcNum:Int) {
 		final functions:Array<Dynamic> = [index, newIndex, metatableCall, garbageCollect, enumIndex];
 
-		//Making the params for the function.
-		final nparams:Int = Lua.gettop(state);
-		final specialIndex:Int = -1;
-		final parentIndex:Int = -1;
-		final params:Array<Dynamic> = [for(i in 0...nparams) CustomConvert.fromLua(-nparams + i, RawPointer.addressOf(specialIndex), RawPointer.addressOf(parentIndex), i == 0)];
-
+	    //Making the params for the function.
+	    final nparams:Int = Lua.gettop(state);
+	    var specialIndex:Int = -1;  // 改为 var
+	    var parentIndex:Int = -1;   // 改为 var
+	    final params:Array<Dynamic> = [for(i in 0...nparams) CustomConvert.fromLua(-nparams + i, RawPointer.addressOf(specialIndex), RawPointer.addressOf(parentIndex), i == 0)];
 		if (funcNum == 2) {
 			final objParent = (parentIndex >= 0) ? LScript.currentLua.specialVars[parentIndex] : null;
 			if (params[1] != objParent)
@@ -229,4 +228,5 @@ class MetatableFunctions {
 		}
 		return null;
 	}
+
 }

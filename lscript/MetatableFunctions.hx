@@ -43,14 +43,23 @@ class MetatableFunctions {
     
         var specialIndex:Int = -1;   
         var parentIndex:Int  = -1;
+        var dummySpecial:Int = -1;
+        var dummyParent:Int = -1;
     
-        final params = [
-            for (i in 0...nparams)
-                CustomConvert.fromLua(-nparams + i,
-                                      RawPointer.addressOf(specialIndex),
-                                      RawPointer.addressOf(parentIndex),
-                                      i == 0)
-        ];
+        final params = [];
+        for (i in 0...nparams) {
+            if (i == 0) {
+                params.push(CustomConvert.fromLua(-nparams + i,
+                                                  RawPointer.addressOf(specialIndex),
+                                                  RawPointer.addressOf(parentIndex),
+                                                  true));
+            } else {
+                params.push(CustomConvert.fromLua(-nparams + i,
+                                                  RawPointer.addressOf(dummySpecial),
+                                                  RawPointer.addressOf(dummyParent),
+                                                  false));
+            }
+        }
     
         if (funcNum == 2) {
             final objParent = (parentIndex >= 0) ? LScript.currentLua.specialVars[parentIndex] : null;
@@ -94,10 +103,10 @@ class MetatableFunctions {
 
             /* 同样：先建变量再取地址 */
             var dummy:Int = -1;
-            final params = [
-                for (i in 0...nparams)
-                    CustomConvert.fromLua(-nparams + i, RawPointer.addressOf(dummy))
-            ];
+            final params = [];
+            for (i in 0...nparams) {
+                params.push(CustomConvert.fromLua(-nparams + i, RawPointer.addressOf(dummy)));
+            }
 
             if (LScript.currentLua != null && LScript.GlobalVars != null)
                 returned = functions[funcNum](params[1], params[2]);

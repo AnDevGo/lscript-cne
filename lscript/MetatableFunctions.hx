@@ -55,9 +55,10 @@ class MetatableFunctions {
         if (funcNum == 2) {
             final objParent = (parentIndex >= 0) ? LScript.currentLua.specialVars[parentIndex] : null;
             if (params[1] != objParent) params.insert(1, objParent);
-            
-            final funcParams = params.splice(2, params.length - 2); 
-            params.push(funcParams);    
+        
+            final funcParams = params.slice(2);   
+            params.resize(2);                    
+            params.push(funcParams);              
         }
     
         var returned:Dynamic = null;
@@ -153,5 +154,6 @@ class MetatableFunctions {
         return null;
     }
 }
+
 
 

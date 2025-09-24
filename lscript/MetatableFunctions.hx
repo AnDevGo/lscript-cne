@@ -68,8 +68,8 @@ class MetatableFunctions {
 
 		//Making the params for the function.
 		final nparams:Int = Lua.gettop(state);
-		final specialIndex:Int = -1;
-		final parentIndex:Int = -1;
+		final specialIndex:Float = -1;
+		final parentIndex:Float = -1;
 		final params:Array<Dynamic> = [for(i in 0...nparams) CustomConvert.fromLua(-nparams + i, RawPointer.addressOf(specialIndex), RawPointer.addressOf(parentIndex), i == 0)];
 
 		if (funcNum == 2) {
@@ -229,4 +229,5 @@ class MetatableFunctions {
 		}
 		return null;
 	}
+
 }

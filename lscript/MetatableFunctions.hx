@@ -70,7 +70,15 @@ class MetatableFunctions {
 		final nparams:Int = Lua.gettop(state);
 		final specialIndex:Int = -1;
 		final parentIndex:Int = -1;
-		final params:Array<Dynamic> = [for(i in 0...nparams) CustomConvert.fromLua(-nparams + i, RawPointer.addressOf(specialIndex), RawPointer.addressOf(parentIndex), i == 0)];
+		final params:Array<Dynamic> = [
+			for(i in 0...nparams)
+				CustomConvert.fromLua(
+					-nparams + i,
+					RawPointer.addressOf(specialIndex),
+					RawPointer.addressOf(parentIndex),
+					i == 0
+				)
+		];
 
 		if (funcNum == 2) {
 			final objParent = (parentIndex >= 0) ? LScript.currentLua.specialVars[parentIndex] : null;
@@ -230,3 +238,4 @@ class MetatableFunctions {
 		return null;
 	}
 }
+

@@ -65,25 +65,32 @@ class MetatableFunctions {
 
     static function metatableFunc(state:State, funcNum:Int) {
         var functions:Array<Dynamic> = [index, newIndex, metatableCall, garbageCollect, enumIndex];
-
-        //Making the params for the function.
+    
         var nparams:Int = Lua.gettop(state);
         var specialIndex:Int = -1;
         var parentIndex:Int = -1;
         
-        // 创建临时变量，确保它们不会被编译器视为常量
-        var specialIndexVar:Int = -1;
-        var parentIndexVar:Int = -1;
-        
         var params:Array<Dynamic> = [];
         for (i in 0...nparams) {
-            // 使用临时变量而不是原始变量
-            params.push(CustomConvert.fromLua(-nparams + i, RawPointer.addressOf(specialIndexVar), RawPointer.addressOf(parentIndexVar), i == 0));
+            var tempSpecialIndex:Int = -1;
+            var tempParentIndex:Int = -1;
+            
+            var stackPos:Int = -nparams + i;
+            var isFirstParam:Bool = (i == 0);
+            
+            params.push(CustomConvert.fromLua(
+                stackPos,
+                RawPointer.addressOf(tempSpecialIndex),
+                RawPointer.addressOf(tempParentIndex),
+                isFirstParam
+            ));
+            
+            // 只在第一个参数时更新全局的 specialIndex 和 parentIndex
+            if (i == 0) {
+                specialIndex = tempSpecialIndex;
+                parentIndex = tempParentIndex;
+            }
         }
-        
-        // 更新原始变量
-        specialIndex = specialIndexVar;
-        parentIndex = parentIndexVar;
 
         if (funcNum == 2) {
             var objParent = (parentIndex >= 0) ? LScript.currentLua.specialVars[parentIndex] : null;
@@ -114,12 +121,10 @@ class MetatableFunctions {
     }
 
     static function globalMetatableFunc(state:State, funcNum:Int) {
-        // Check if state is valid
         if (state == null) return 0;
-
-        var functions:Array<Dynamic> = [globalIndex, globalNewIndex]; // 将final改为var
-
-        // Get parameters safely
+    
+        var functions:Array<Dynamic> = [globalIndex, globalNewIndex];
+    
         var returned:Dynamic = null;
         try {
             var nparams:Int = Lua.gettop(state);
@@ -127,30 +132,35 @@ class MetatableFunctions {
                 Lua.settop(state, 0);
                 return 0;
             }
-
-            var params:Array<Dynamic> = [for(i in 0...nparams) CustomConvert.fromLua(-nparams + i)];
-
-            // Call the function safely
-            if (LScript.currentLua != null && LScript.GlobalVars != null) {
-                returned = functions[funcNum](params[1], params[2]); // params[0] is the global table itself
+    
+            var params:Array<Dynamic> = [];
+            for (i in 0...nparams) {
+                var stackPos:Int = -nparams + i;
+                params.push(CustomConvert.fromLua(stackPos));
             }
-        } catch(e) {
+    
+            if (LScript.currentLua != null && LScript.GlobalVars != null) {
+                if (funcNum == 0 && params.length >= 2) {
+                    returned = functions[funcNum](params[1], params.length >= 3 ? params[2] : null);
+                } else if (funcNum == 1 && params.length >= 3) {
+                    returned = functions[funcNum](params[1], params[2]);
+                }
+            }
+        } catch (e) {
             try {
                 LuaL.error(state, "Global Variable Error: " + e.details());
-            } catch(e2) {
-                // If even error reporting fails, just clean up
-            }
+            } catch (e2) {}
             Lua.settop(state, 0);
             return 0;
         }
-
+    
         Lua.settop(state, 0);
-
+    
         if (returned != null) {
             try {
                 CustomConvert.toLua(returned);
                 return 1;
-            } catch(e) {
+            } catch (e) {
                 return 0;
             }
         }
@@ -243,3 +253,4 @@ class MetatableFunctions {
         return null;
     }
 }
+

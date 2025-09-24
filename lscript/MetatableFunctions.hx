@@ -31,6 +31,14 @@ class MetatableFunctions {
 	 * The metatable function that is called when lua tries to get an enum value. (TODO: Fix enum values with parameters.)
 	 */
 	public static final callEnumIndex = Callable.fromStaticFunction(_callEnumIndex);
+	/**
+	 * The metatable function that is called when lua tries to get a global variable.
+	 */
+	public static final callGlobalIndex = Callable.fromStaticFunction(_callGlobalIndex);
+	/**
+	 * The metatable function that is called when lua tries to set a global variable.
+	 */
+	public static final callGlobalNewIndex = Callable.fromStaticFunction(_callGlobalNewIndex);
 
 	//These functions are here because Callable seems like it wants an int return and whines when you do a non static function.
 	static function _callIndex(state:StatePointer):Int {
@@ -47,6 +55,12 @@ class MetatableFunctions {
 	}
 	static function _callEnumIndex(state:StatePointer):Int {
 		return metatableFunc(LScript.currentLua.luaState, 4);
+	}
+	static function _callGlobalIndex(state:StatePointer):Int {
+		return globalMetatableFunc(LScript.currentLua.luaState, 0);
+	}
+	static function _callGlobalNewIndex(state:StatePointer):Int {
+		return globalMetatableFunc(LScript.currentLua.luaState, 1);
 	}
 
 	static function metatableFunc(state:State, funcNum:Int) {
@@ -86,6 +100,50 @@ class MetatableFunctions {
 		return 0;
 	}
 
+	static function globalMetatableFunc(state:State, funcNum:Int) {
+		// Check if state is valid
+		if (state == null) return 0;
+
+		final functions:Array<Dynamic> = [globalIndex, globalNewIndex];
+
+		// Get parameters safely
+		var returned:Dynamic = null;
+		try {
+			final nparams:Int = Lua.gettop(state);
+			if (nparams < 2) {
+				Lua.settop(state, 0);
+				return 0;
+			}
+
+			final params:Array<Dynamic> = [for(i in 0...nparams) CustomConvert.fromLua(-nparams + i)];
+
+			// Call the function safely
+			if (LScript.currentLua != null && LScript.GlobalVars != null) {
+				returned = functions[funcNum](params[1], params[2]); // params[0] is the global table itself
+			}
+		} catch(e) {
+			try {
+				LuaL.error(state, "Global Variable Error: " + e.details());
+			} catch(e2) {
+				// If even error reporting fails, just clean up
+			}
+			Lua.settop(state, 0);
+			return 0;
+		}
+
+		Lua.settop(state, 0);
+
+		if (returned != null) {
+			try {
+				CustomConvert.toLua(returned);
+				return 1;
+			} catch(e) {
+				return 0;
+			}
+		}
+		return 0;
+	}
+
 	//These three functions are the actual functions that the metatable use.
 	//Without these, object oriented lua wouldn't work at all.
 
@@ -108,8 +166,25 @@ class MetatableFunctions {
 
 		var propName:String = cast(property, String);
 
-		if (object != null)
-			Reflect.setProperty(object, propName, value);
+		// Check if object is not null before trying to set property
+		if (object != null) {
+			try {
+				// First try to set the property using Reflect
+				Reflect.setProperty(object, propName, value);
+			} catch (e:Dynamic) {
+				// If that fails, try to set it as a dynamic field
+				try {
+					object.setProperty(propName, value);
+				} catch (e2:Dynamic) {
+					// If that also fails, try to directly set the field
+					try {
+						Reflect.setField(object, propName, value);
+					} catch (e3:Dynamic) {
+						// If all methods fail, we at least tried
+					}
+				}
+			}
+		}
 		return null;
 	}
 	public static function metatableCall(func:Dynamic, object:Dynamic, ?params:Array<Any>) {
@@ -132,22 +207,26 @@ class MetatableFunctions {
 			return enumValue;
 		return null;
 	}
-}
 
-/**
- * ignore this code block.
- * i was showing CrowPlexus how easy it would be to make a create function.
- * 
- * ```haxe
- * var script = new LScript("
- * --haha funny lua code
- * function create()
- *      FlxG.state:add(FlxSprite:new(640, 360, 'assets/images/piss.png'))
- * end
- * ");
- * script.setVar("FlxG", flixel.FlxG);
- * script.setVar("FlxSprite", flixel.FlxSprite);
- * script.execute();
- * script.callFunc("create");
- * ```
- */
+	public static function globalIndex(property:String, ?uselessValue:Dynamic):Dynamic {
+		try {
+			if (property != null && LScript.GlobalVars != null && LScript.GlobalVars.exists(property)) {
+				return LScript.GlobalVars.get(property);
+			}
+		} catch (e:Dynamic) {
+			// Ignore errors during global variable access
+		}
+		return null;
+	}
+
+	public static function globalNewIndex(property:String, value:Dynamic):Dynamic {
+		try {
+			if (property != null && LScript.GlobalVars != null) {
+				LScript.GlobalVars.set(property, value);
+			}
+		} catch (e:Dynamic) {
+			// Ignore errors during global variable setting
+		}
+		return null;
+	}
+}

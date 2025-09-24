@@ -1,7 +1,6 @@
 package lscript;
 
 import lscript.*;
-import funkin.backend.utils.NativeAPI;
 
 import llua.Lua;
 import llua.LuaL;
@@ -9,19 +8,20 @@ import llua.State;
 import llua.LuaOpen;
 
 import cpp.Callable;
+import cpp.RawPointer;
 
 using StringTools;
 
 /**
  * The class used for making lua scripts.
- *
+ * 
  * Base code written by YoshiCrafter29 (https://github.com/YoshiCrafter29)
  * Fixed and tweaked by Srt (https://github.com/SrtHero278)
- *
+ * 
  * Features:
  * - Global variables accessible via the 'global' table in Lua
  * - Direct Haxe access to variables via getVar/setVar
- *
+ * 
  * Example Lua usage:
  * ```lua
  * global.myVar = "test"  -- Set global variable
@@ -30,10 +30,7 @@ using StringTools;
  */
 class LScript {
 	public static var currentLua:LScript = null;
-
-	/**
-	 * Static global variables storage shared across all LScript instances
-	 */
+	
 	public static var GlobalVars:Map<String, Dynamic> = new Map<String, Dynamic>();
 
 	/**
@@ -77,7 +74,7 @@ class LScript {
 	public var specialVars:Map<Int, Dynamic> = [-1 => null];
 	public var avalibableIndexes:Array<Int> = [];
 	public var nextIndex:Int = 1;
-
+	
 	public function new(?unsafe:Bool = false) {
 		luaState = LuaL.newstate();
 		if(unsafe)
@@ -89,7 +86,7 @@ class LScript {
 			LuaOpen.table(luaState);
 		}
 		this.unsafe = unsafe;
-
+		
 		Lua.register_hxtrace_func(Callable.fromStaticFunction(scriptTrace));
 		Lua.register_hxtrace_lib(luaState);
 
@@ -105,11 +102,11 @@ class LScript {
 		Lua.pushstring(luaState, '__index'); //This is a function in the metatable that is called when you to get a var that doesn't exist.
 		Lua.pushcfunction(luaState, MetatableFunctions.callIndex);
 		Lua.settable(luaState, metatableIndex);
-
+		
 		Lua.pushstring(luaState, '__newindex'); //This is a function in the metatable that is called when you to set a var that was originally null.
 		Lua.pushcfunction(luaState, MetatableFunctions.callNewIndex);
 		Lua.settable(luaState, metatableIndex);
-
+		
 		Lua.pushstring(luaState, '__call'); //This is a function in the metatable that is called when you call a function inside the table.
 		Lua.pushcfunction(luaState, MetatableFunctions.callMetatableCall);
 		Lua.settable(luaState, metatableIndex);
@@ -122,7 +119,7 @@ class LScript {
 
 		LuaL.newmetatable(luaState, "__enumMetatable");
 		final enumMetatableIndex = Lua.gettop(luaState); //The variable position of the table. Used for setting the functions inside this metatable.
-		Lua.pushvalue(luaState, metatableIndex);
+		Lua.pushvalue(luaState, enumMetatableIndex);
 
 		Lua.pushstring(luaState, '__index'); //This is a function in the metatable that is called when you to get a var that doesn't exist.
 		Lua.pushcfunction(luaState, MetatableFunctions.callEnumIndex);
@@ -141,48 +138,39 @@ class LScript {
 
 		LuaL.getmetatable(luaState, "__scriptMetatable");
 		Lua.setmetatable(luaState, scriptTableIndex);
-
+		
 		// Create global table for sharing variables between scripts
 		createGlobalTable();
 	}
 
 	private function createGlobalTable() {
-		if (luaState == null) return;
+		// Create global table with metatable for cross-script global variables
+		Lua.newtable(luaState);
+		final globalTableIndex = Lua.gettop(luaState);
+		Lua.pushvalue(luaState, globalTableIndex);
+		Lua.setglobal(luaState, "global");
 
-		try {
-			// Create global table with metatable for cross-script global variables
-			Lua.newtable(luaState);
-			final globalTableIndex = Lua.gettop(luaState);
-			Lua.pushvalue(luaState, globalTableIndex);
-			Lua.setglobal(luaState, "global");
+		// Create metatable for global table
+		LuaL.newmetatable(luaState, "__globalMetatable");
+		final globalMetatableIndex = Lua.gettop(luaState);
 
-			// Create metatable for global table
-			LuaL.newmetatable(luaState, "__globalMetatable");
-			final globalMetatableIndex = Lua.gettop(luaState);
+		Lua.pushstring(luaState, '__index');
+		Lua.pushcfunction(luaState, MetatableFunctions.callGlobalIndex);
+		Lua.settable(luaState, globalMetatableIndex);
 
-			Lua.pushstring(luaState, '__index');
-			Lua.pushcfunction(luaState, MetatableFunctions.callGlobalIndex);
-			Lua.settable(luaState, globalMetatableIndex);
+		Lua.pushstring(luaState, '__newindex');
+		Lua.pushcfunction(luaState, MetatableFunctions.callGlobalNewIndex);
+		Lua.settable(luaState, globalMetatableIndex);
 
-			Lua.pushstring(luaState, '__newindex');
-			Lua.pushcfunction(luaState, MetatableFunctions.callGlobalNewIndex);
-			Lua.settable(luaState, globalMetatableIndex);
-
-			Lua.setmetatable(luaState, globalTableIndex);
-		} catch (e:Dynamic) {
-			// If global table creation fails, continue without it
-			// This prevents crashes but global variables won't work
-		}
+		Lua.setmetatable(luaState, globalTableIndex);
 	}
 
 	public function execute(code:String) {
-		if (_isDestroying || luaState == null) return;
-
 		final lastLua:LScript = currentLua;
 		currentLua = this;
 
 		//Adding a suffix to the end of the lua file to attach a metatable to the global vars. (So you don't have to do `script.parent.this`)
-		toParse = code + '\nsetmetatable(_G, {
+		toParse = preprocessCode(code) + '\nsetmetatable(_G, {
 			__newindex = function (notUsed, name, value)
 				__scriptMetatable.__newindex(script.parent, name, value)
 			end,
@@ -197,59 +185,58 @@ class LScript {
 		currentLua = lastLua;
 	}
 
+	private function preprocessCode(code:String):String {
+
+		var processedCode = code;
+
+		processedCode = ~/\bglobal\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=/g.map(processedCode, function (e) {
+			var varName = e.matched(1);
+			return varName + " =";
+		});
+
+		processedCode = ~/\bglobal\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g.map(processedCode, function (e) {
+			var varName = e.matched(1);
+			return varName + " (";
+		});
+		
+		return processedCode;
+	}
+
 	public dynamic function parseError(err:String) {
 		trace("Lua code was unable to be parsed.\n" + err);
-		NativeAPI.showMessageBox('Error Lua', err);
 	}
 
 	public dynamic function functionError(func:String, err:String) {
 		Sys.println(tracePrefix + 'Function("$func") Error: ${Lua.tostring(luaState, -1)}');
-		NativeAPI.showMessageBox('Error Lua', tracePrefix + 'Function("$func") Error: ${Lua.tostring(luaState, -1)}');
 	}
 
 	public dynamic function print(line:Int, s:String) {
 		Sys.println('${tracePrefix}:${line}: ' + s);
-		NativeAPI.showMessageBox('Error Lua', '${tracePrefix}:${line}: ' + s);
 	}
 
 	static inline function scriptTrace(s:String):Int {
-		if (currentLua == null || currentLua.luaState == null || currentLua._isDestroying) {
-			return 0;
-		}
+		var info:Lua_Debug = {};
+		Lua.getstack(currentLua.luaState, 1, info);
+		Lua.getinfo(currentLua.luaState, "l", info);
 
-		try {
-			var info:Lua_Debug = {};
-			Lua.getstack(currentLua.luaState, 1, info);
-			Lua.getinfo(currentLua.luaState, "l", info);
+		var toTrace = "";
+		final numParams = Lua.gettop(currentLua.luaState);
+		for (i in 0...(numParams - 1))
+			toTrace += Std.string(CustomConvert.fromLua(-numParams + i));
 
-			var toTrace = "";
-			final numParams = Lua.gettop(currentLua.luaState);
-			for (i in 0...(numParams - 1))
-				toTrace += Std.string(CustomConvert.fromLua(-numParams + i));
-
-			currentLua.print(info.currentline, toTrace);
-		} catch (e:Dynamic) {
-			// Ignore trace errors
-		}
+		currentLua.print(info.currentline, toTrace);
 		return 0;
 	}
 
 	public function getVar(name:String):Dynamic {
-		if (_isDestroying || luaState == null) return null;
-
 		var toReturn:Dynamic = null;
 
 		final lastLua:LScript = currentLua;
 		currentLua = this;
 
-		try {
-			Lua.getglobal(luaState, name);
-			toReturn = CustomConvert.fromLua(-1);
-			Lua.pop(luaState, 1);
-		} catch (e:Dynamic) {
-			// Return null if getting variable fails
-			toReturn = null;
-		}
+		Lua.getglobal(luaState, name);
+		toReturn = CustomConvert.fromLua(-1);
+		Lua.pop(luaState, 1);
 
 		currentLua = lastLua;
 
@@ -257,188 +244,73 @@ class LScript {
 	}
 
 	public function setVar(name:String, newValue:Dynamic) {
-		if (_isDestroying || luaState == null) return;
-
 		final lastLua:LScript = currentLua;
 		currentLua = this;
 
-		try {
-			CustomConvert.toLua(newValue);
-			Lua.setglobal(luaState, name);
-		} catch (e:Dynamic) {
-			// Ignore errors when setting variables
-		}
-
+		CustomConvert.toLua(newValue);
+		Lua.setglobal(luaState, name);
+		
 		currentLua = lastLua;
 	}
 
 	public function callFunc(name:String, ?params:Array<Dynamic>):Dynamic {
-		if (_isDestroying || luaState == null) return null;
-
 		final lastLua:LScript = currentLua;
 		currentLua = this;
 
-		try {
-			Lua.settop(luaState, 0);
-			Lua.getglobal(luaState, name); //Finds the function from the script.
+		Lua.settop(luaState, 0);
+		Lua.getglobal(luaState, name); //Finds the function from the script.
 
-			if (!Lua.isfunction(luaState, -1))
-				return null;
+		if (!Lua.isfunction(luaState, -1))
+			return null;
 
-			//Pushes the parameters of the script.
-			var nparams:Int = 0;
-			if (params != null && params.length > 0) {
-				nparams = params.length;
-				for (val in params)
-					CustomConvert.toLua(val);
-			}
-
-			//Calls the function of the script. If it does not return 0, will trace what went wrong.
-			if (Lua.pcall(luaState, nparams, 1, 0) != 0) {
-				functionError(name, Lua.tostring(luaState, -1));
-				return null;
-			}
-
-			//Grabs and returns the result of the function.
-			final v = CustomConvert.fromLua(Lua.gettop(luaState));
-			Lua.settop(luaState, 0);
-			currentLua = lastLua;
-			return v;
-		} catch (e:Dynamic) {
-			// If anything fails, clean up and return null
-			try {
-				Lua.settop(luaState, 0);
-			} catch (e2:Dynamic) {}
-			currentLua = lastLua;
+		//Pushes the parameters of the script.
+		var nparams:Int = 0;
+		if (params != null && params.length > 0) {
+			nparams = params.length;
+	   		for (val in params)
+				CustomConvert.toLua(val);
+		}
+		
+		//Calls the function of the script. If it does not return 0, will trace what went wrong.
+		if (Lua.pcall(luaState, nparams, 1, 0) != 0) {
+			functionError(name, Lua.tostring(luaState, -1));
 			return null;
 		}
-	}
 
-	/**
-	 * Flag to indicate if this script is being destroyed
-	 */
-	private var _isDestroying:Bool = false;
+		//Grabs and returns the result of the function.
+		final v = CustomConvert.fromLua(Lua.gettop(luaState));
+		Lua.settop(luaState, 0);
+		currentLua = lastLua;
+		return v;
+	}
 
 	/**
 	 * Safely close and cleanup the LScript instance
 	 */
 	public function close() {
-		if (_isDestroying || luaState == null) return;
-		_isDestroying = true;
-
-		try {
-			// First, immediately clear the current lua reference to stop any ongoing operations
+		if (luaState != null) {
+			// Clear current lua reference if it's this instance
 			if (currentLua == this) {
 				currentLua = null;
 			}
 
-			// Clear all globals to prevent any lingering references
-			try {
-				if (luaState != null) {
-					Lua.pushnil(luaState);
-					Lua.setglobal(luaState, "script");
-					Lua.pushnil(luaState);
-					Lua.setglobal(luaState, "global");
-				}
-			} catch (e:Dynamic) {
-				// Ignore global clearing errors
-			}
-
-			// Force garbage collection in Lua before closing
-			try {
-				if (luaState != null) {
-					Lua.gc(luaState, Lua.LUA_GCCOLLECT, 0);
-				}
-			} catch (e:Dynamic) {
-				// Ignore GC errors
-			}
-
-			// Clean up special variables with extra safety
+			// Clean up special variables
 			if (specialVars != null) {
-				try {
-					// Create a copy of keys to avoid modification during iteration
-					var keysToRemove = [for (key in specialVars.keys()) key];
-					for (key in keysToRemove) {
-						try {
-							if (specialVars.exists(key)) {
-								var value = specialVars.get(key);
-								if (value != null) {
-									// Try to null any potential Flixel objects
-									if (Reflect.hasField(value, "destroy")) {
-										try {
-											Reflect.callMethod(value, Reflect.field(value, "destroy"), []);
-										} catch (e:Dynamic) {}
-									}
-									specialVars.set(key, null);
-								}
-								specialVars.remove(key);
-							}
-						} catch (e:Dynamic) {
-							// Continue with next key even if this one fails
-						}
-					}
-				} catch (e:Dynamic) {
-					// Ignore all special variable cleanup errors
+				for (key in specialVars.keys()) {
+					specialVars.remove(key);
 				}
 				specialVars = null;
 			}
 
 			// Clear available indexes
 			if (avalibableIndexes != null) {
-				try {
-					while (avalibableIndexes.length > 0) {
-						avalibableIndexes.pop();
-					}
-					avalibableIndexes = null;
-				} catch (e:Dynamic) {
-					avalibableIndexes = null;
-				}
+				avalibableIndexes = [];
 			}
 
-			// Reset all properties that might hold references
-			try {
-				parent = null;
-				toParse = null;
-				tracePrefix = null;
-			} catch (e:Dynamic) {
-				// Ignore property reset errors
-			}
-
-			// Reset index counter
-			nextIndex = 1;
-
-			// Close lua state as the absolute last step
-			var tempState = luaState;
-			luaState = null; // Set to null immediately to prevent further use
-
-			try {
-				if (tempState != null) {
-					Lua.close(tempState);
-				}
-			} catch (e:Dynamic) {
-				// Ignore lua close errors, state is already nulled
-			}
-
-		} catch (e:Dynamic) {
-			// Emergency cleanup - ensure everything is nulled
+			// Close lua state
+			Lua.close(luaState);
 			luaState = null;
-			specialVars = null;
-			avalibableIndexes = null;
-			parent = null;
-			toParse = null;
-			if (currentLua == this) {
-				currentLua = null;
-			}
 		}
-
-		_isDestroying = false;
-	}
-
-	/**
-	 * Destructor to ensure cleanup even if close() wasn't called
-	 */
-	public function destroy() {
-		close();
 	}
 
 	inline function get_script() {
@@ -450,5 +322,58 @@ class LScript {
 	}
 	inline function set_parent(newParent:Dynamic) {
 		return specialVars[0].parent = newParent;
+	}
+	
+	/**
+	 * Creates a global table that can be used to share variables between different lua scripts
+	 */
+	function createGlobalTable() {
+		// Create the global metatable for shared variables
+		LuaL.newmetatable(luaState, "__globalMetatable");
+		final globalMetatableIndex = Lua.gettop(luaState);
+		
+		// Set __index function for the global table
+		Lua.pushstring(luaState, "__index");
+		Lua.pushcfunction(luaState, Callable.fromStaticFunction(globalIndex));
+		Lua.settable(luaState, globalMetatableIndex);
+		
+		// Set __newindex function for the global table
+		Lua.pushstring(luaState, "__newindex");
+		Lua.pushcfunction(luaState, Callable.fromStaticFunction(globalNewIndex));
+		Lua.settable(luaState, globalMetatableIndex);
+		
+		// Create the global table
+		Lua.newtable(luaState);
+		final globalTableIndex = Lua.gettop(luaState);
+		
+		// Set metatable for the global table
+		LuaL.getmetatable(luaState, "__globalMetatable");
+		Lua.setmetatable(luaState, globalTableIndex);
+		
+		// Set the global table in the Lua state
+		Lua.setglobal(luaState, "global");
+	}
+	
+	/**
+	 * The C function for __index of the global table
+	 */
+	public static function globalIndex(state:StatePointer):Int {
+		final globalName = Lua.tostring(cast state, -1);
+		if (LScript.GlobalVars.exists(globalName)) {
+			CustomConvert.toLua(LScript.GlobalVars.get(globalName));
+			return 1;
+		}
+		Lua.pushnil(cast state);
+		return 1;
+	}
+	
+	/**
+	 * The C function for __newindex of the global table
+	 */
+	public static function globalNewIndex(state:StatePointer):Int {
+		final globalName = Lua.tostring(cast state, -2);
+		final value = CustomConvert.fromLua(-1);
+		LScript.GlobalVars.set(globalName, value);
+		return 0;
 	}
 }

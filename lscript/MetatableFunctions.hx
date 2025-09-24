@@ -14,31 +14,31 @@ class MetatableFunctions {
 	/**
 	 * The metatable function that is called when lua tries to get an unknown variable.
 	 */
-	public static final callIndex = Callable.fromStaticFunction(_callIndex);
+	public static var callIndex = Callable.fromStaticFunction(_callIndex);
 	/**
 	 * The metatable function that is called when lua tries to set an unknown variable.
 	 */
-	public static final callNewIndex = Callable.fromStaticFunction(_callNewIndex);
+	public static var callNewIndex = Callable.fromStaticFunction(_callNewIndex);
 	/**
 	 * The metatable function that is called when lua calls a function with this metatable. (Most likely a haxe function)
 	 */
-	public static final callMetatableCall = Callable.fromStaticFunction(_callMetatableCall);
+	public static var callMetatableCall = Callable.fromStaticFunction(_callMetatableCall);
 	/**
 	 * The metatable function that is called when lua tries to get an enum value. (TODO: Fix enum values with parameters.)
 	 */
-	public static final callGarbageCollect = Callable.fromStaticFunction(_callGarbageCollect);
+	public static var callGarbageCollect = Callable.fromStaticFunction(_callGarbageCollect);
 	/**
 	 * The metatable function that is called when lua tries to get an enum value. (TODO: Fix enum values with parameters.)
 	 */
-	public static final callEnumIndex = Callable.fromStaticFunction(_callEnumIndex);
+	public static var callEnumIndex = Callable.fromStaticFunction(_callEnumIndex);
 	/**
 	 * The metatable function that is called when lua tries to get a global variable.
 	 */
-	public static final callGlobalIndex = Callable.fromStaticFunction(_callGlobalIndex);
+	public static var callGlobalIndex = Callable.fromStaticFunction(_callGlobalIndex);
 	/**
 	 * The metatable function that is called when lua tries to set a global variable.
 	 */
-	public static final callGlobalNewIndex = Callable.fromStaticFunction(_callGlobalNewIndex);
+	public static var callGlobalNewIndex = Callable.fromStaticFunction(_callGlobalNewIndex);
 
 	//These functions are here because Callable seems like it wants an int return and whines when you do a non static function.
 	static function _callIndex(state:StatePointer):Int {
@@ -104,18 +104,18 @@ class MetatableFunctions {
 		// Check if state is valid
 		if (state == null) return 0;
 
-		final functions:Array<Dynamic> = [globalIndex, globalNewIndex];
+		var functions:Array<Dynamic> = [globalIndex, globalNewIndex];
 
 		// Get parameters safely
 		var returned:Dynamic = null;
 		try {
-			final nparams:Int = Lua.gettop(state);
+			var nparams:Int = Lua.gettop(state);
 			if (nparams < 2) {
 				Lua.settop(state, 0);
 				return 0;
 			}
 
-			final params:Array<Dynamic> = [for(i in 0...nparams) CustomConvert.fromLua(-nparams + i)];
+			var params:Array<Dynamic> = [for(i in 0...nparams) CustomConvert.fromLua(-nparams + i)];
 
 			// Call the function safely
 			if (LScript.currentLua != null && LScript.GlobalVars != null) {
@@ -188,7 +188,7 @@ class MetatableFunctions {
 		return null;
 	}
 	public static function metatableCall(func:Dynamic, object:Dynamic, ?params:Array<Any>) {
-		final funcParams = (params != null && params.length > 0) ? params : [];
+		var funcParams = (params != null && params.length > 0) ? params : [];
 
 		if (func != null && Reflect.isFunction(func))
 			return Reflect.callMethod(object, func, funcParams);
@@ -199,7 +199,7 @@ class MetatableFunctions {
 		LScript.currentLua.specialVars.remove(index);
 	}
 	public static function enumIndex(object:Enum<Dynamic>, value:String, ?params:Array<Any>):EnumValue {
-		final funcParams = (params != null && params.length > 0) ? params : [];
+		var funcParams = (params != null && params.length > 0) ? params : [];
 		var enumValue:EnumValue;
 
 		enumValue = object.createByName(value, funcParams);
@@ -231,4 +231,5 @@ class MetatableFunctions {
 	}
 
 }
+
 
